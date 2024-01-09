@@ -1,0 +1,255 @@
+import tensorflow as tf
+print(tf.__version__)
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import os
+import librosa
+import numpy as np
+from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense,Dropout,Activation,Flatten
+from tensorflow.keras.optimizers import Adam
+from sklearn import metrics
+from tensorflow.keras.callbacks import ModelCheckpoint
+from datetime import datetime 
+
+audio_file_path='sesdosyaları/audiodata/fold5/I11.wav'
+
+librosa_audio_data, librosa_sample_rate = librosa.load(audio_file_path)
+
+print(librosa_audio_data)
+
+plt.figure(figsize=(12, 4))
+plt.plot(librosa_audio_data)
+plt.show()
+
+from scipy.io import wavfile as wav
+wave_sample_rate, wave_audio = wav.read(audio_file_path)
+
+wave_audio
+
+plt.figure(figsize=(12, 4))
+plt.plot(wave_audio)
+plt.show()
+
+mfccs = librosa.feature.mfcc(y=librosa_audio_data, sr=librosa_sample_rate, n_mfcc=40)   #n_mfcc: number of MFCCs to return 
+print(mfccs.shape)
+mfccs
+
+audio_dataset_path='sesdosyaları/audiodata/'
+metadata=pd.read_csv('sesdosyaları/metadata/SES.csv')
+metadata
+
+def features_extractor(filename):
+    audio, sample_rate = librosa.load(filename, res_type='kaiser_fast') 
+    mfccs_features = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
+    mfccs_scaled_features = np.mean(mfccs_features.T,axis=0)
+    
+    return mfccs_scaled_features
+
+extracted_features=[]
+for index_num,row in tqdm(metadata.iterrows()):
+    fileName = os.path.join(os.path.abspath(audio_dataset_path),'fold'+str(row["fold"])+'/',str(row["file_name"]))
+    final_class_labels=row["class"]
+    data=features_extractor(fileName)
+    extracted_features.append([data,final_class_labels])
+
+extracted_features_df = pd.DataFrame(extracted_features,columns=['feature','class'])
+extracted_features_df.head()
+
+X=np.array(extracted_features_df['feature'].tolist())
+y=np.array(extracted_features_df['class'].tolist())
+X.shape
+
+X
+
+y
+
+y.shape
+
+labelencoder=LabelEncoder()
+y=to_categorical(labelencoder.fit_transform(y))
+
+y
+
+y[0]
+
+X_train,X_test,y_train,y_test=train_test_split(X,y,test_size=0.3,random_state=0)
+X_train
+y
+X_train.shape
+X_test.shape
+y_train.shape
+y_test.shape
+
+num_labels = 5
+
+model=Sequential()
+# 1. hidden layer
+model.add(Dense(125,input_shape=(40,)))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+# 2. hidden layer
+model.add(Dense(250))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+# 3. hidden layer
+model.add(Dense(125))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+
+# output layer
+model.add(Dense(num_labels))
+model.add(Activation('softmax'))
+
+model.summary()
+
+import tensorflow as tf
+model.compile(loss='categorical_crossentropy', 
+              metrics=[tf.keras.metrics.Precision(), tf.keras.metrics.Recall()], optimizer='adam')
+
+
+model.compile(loss='categorical_crossentropy', metrics=['accuracy'], optimizer='adam')
+
+epochscount = 70
+num_batch_size = 32
+
+model.fit(X_train, y_train, batch_size=num_batch_size, epochs=epochscount, validation_data=(X_test, y_test), verbose=1)
+
+validation_test_set_accuracy = model.evaluate(X_test,y_test,verbose=0)
+print(validation_test_set_accuracy[1])
+
+from sklearn.metrics import precision_score, recall_score
+
+y_pred = model.predict(X_test)
+
+y_true = np.argmax(y_test, axis=1)
+y_pred = np.argmax(y_pred, axis=1)
+
+precision = precision_score(y_true, y_pred, average='macro')
+recall = recall_score(y_true, y_pred, average='macro')
+
+print("Precision:", precision)
+print("Recall:", recall)
+f1=2*(precision*recall)/(precision+recall)
+print("F-1:", f1)
+
+X_test[1]
+
+(model.predict(X_test) > 0.5).astype("int64")
+
+filename="I5.wav"
+sound_signal, sample_rate = librosa.load(filename, res_type='kaiser_fast') 
+mfccs_features = librosa.feature.mfcc(y=sound_signal, sr=sample_rate, n_mfcc=40)
+mfccs_scaled_features = np.mean(mfccs_features.T,axis=0)
+
+print(mfccs_scaled_features)
+
+mfccs_scaled_features = mfccs_scaled_features.reshape(1,-1)
+
+mfccs_scaled_features.shape
+
+print(mfccs_scaled_features)
+
+print(mfccs_scaled_features.shape)
+
+result_array = model.predict(mfccs_scaled_features)
+
+result_array
+
+result_classes = ["Hicran","Irmak","Kaan","Mehmet","Mert"]
+
+result = np.argmax(result_array[0])
+print(result_classes[result]) 
+
+import speech_recognition as sr
+import librosa
+import numpy as np
+import matplotlib.pyplot as plt
+#import time
+r = sr.Recognizer()
+mic = sr.Microphone()
+
+with mic as source:
+    r.adjust_for_ambient_noise(source)
+    
+    audioSignal=r.listen(source)
+    
+    try:
+        text=r.recognize_google(audioSignal, language='tr-tr')
+        print("Metin: ", text)
+    except sr.UnknownValueError:
+        print("Ne dediğini anlayamadım")
+    except sr.RequestError:
+        print("İnternete bağlanamıyorum")
+ 
+librosa_audio_data = librosa.util.buf_to_float(audioSignal.frame_data, n_bytes=2, dtype=np.float32)
+
+filename="librosa_audio_data"
+sound_signal, sample_rate = librosa(filename, res_type='kaiser_fast') 
+mfccs_features = librosa.feature.mfcc(y=sound_signal, sr=sample_rate, n_mfcc=40)
+mfccs_scaled_features = np.mean(mfccs_features.T,axis=0)
+
+
+import pyaudio
+import numpy as np
+import time
+
+CHUNK = 1024  
+FORMAT = pyaudio.paFloat32
+CHANNELS = 1
+RATE = 44100  
+RECORD_SECONDS = 5 
+
+audio = pyaudio.PyAudio()
+
+stream = audio.open(format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    frames_per_buffer=CHUNK)
+
+print("Ses kaydediliyor. Kayıt süresi:", RECORD_SECONDS, "saniye.")
+
+audio_signal = np.array([], dtype=np.float32)
+start_time = time.time()
+while time.time() - start_time < RECORD_SECONDS:
+    data = stream.read(CHUNK)
+    audio_signal = np.append(audio_signal, np.frombuffer(data, dtype=np.float32))
+
+print("Ses kaydı tamamlandı.")
+
+stream.stop_stream()
+stream.close()
+audio.terminate()
+
+
+sound_signal = audio_signal
+
+sample_rate = 22050
+
+mfccs_features = librosa.feature.mfcc(y=sound_signal, sr=sample_rate, n_mfcc=40)
+mfccs_scaled_features = np.mean(mfccs_features.T, axis=0)
+audio_signal = np.array([], dtype=np.float32)
+
+print(mfccs_scaled_features)
+
+mfccs_scaled_features = mfccs_scaled_features.reshape(1,-1)
+mfccs_scaled_features.shape
+
+print(mfccs_scaled_features)
+
+print(mfccs_scaled_features.shape)
+
+result_array = model.predict(mfccs_scaled_features)
+
+result_array
+
+result_classes = ["Hicran","Irmak","Kaan","Mehmet","Mert"]
+
+result = np.argmax(result_array[0])
+print(result_classes[result]) 
